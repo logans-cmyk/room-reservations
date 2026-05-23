@@ -182,7 +182,7 @@
   .tcell.occupied:hover { background: transparent; }
 
   .bblock {
-    position: absolute; top: 3px; left: 2px; bottom: 3px;
+    position: absolute; top: 3px; bottom: 3px;
     border-radius: 4px; display: flex; align-items: center;
     padding: 0 7px; font-size: 11px; font-weight: 600;
     cursor: pointer; overflow: hidden; white-space: nowrap;
@@ -211,9 +211,47 @@
   }
   .res-tab.active { color: var(--navy); border-bottom-color: var(--teal); font-weight: 600; }
 
+  /* ── FORM ── */
+  .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .form-field { display: flex; flex-direction: column; }
+  .form-label {
+    display: block; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-muted); margin-bottom: 4px;
+  }
+  .form-input, .form-select, .form-textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--gray-border);
+    border-radius: 6px; font-size: 13px; font-family: inherit;
+    color: var(--text); background: var(--white);
+    transition: border-color 0.12s, box-shadow 0.12s;
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    outline: none; border-color: var(--teal);
+    box-shadow: 0 0 0 2px rgba(0, 178, 186, 0.15);
+  }
+  .form-textarea { height: 56px; resize: vertical; }
+  .form-actions { display: flex; gap: 10px; margin-top: 4px; }
+  .btn-cancel-form {
+    flex: 1; padding: 10px; border: 1px solid var(--gray-border);
+    border-radius: 6px; background: none; font-size: 13px;
+    cursor: pointer; color: var(--text-muted); font-family: inherit;
+    transition: background 0.1s;
+  }
+  .btn-cancel-form:hover { background: var(--gray-bg); }
+  .btn-submit-form {
+    flex: 2; padding: 10px; background: var(--teal); color: white;
+    border: none; border-radius: 6px; font-size: 13px;
+    font-weight: 600; cursor: pointer; font-family: inherit;
+    transition: background 0.12s;
+  }
+  .btn-submit-form:hover { background: var(--teal-d); }
+  .btn-submit-form:focus, .btn-cancel-form:focus {
+    outline: 2px solid var(--teal); outline-offset: 2px;
+  }
+
   /* ── TOAST ── */
   .toast {
-    position: absolute; bottom: 24px; left: 50%;
+    position: fixed; bottom: 24px; left: 50%;
     transform: translateX(-50%) translateY(10px);
     background: var(--navy); color: white;
     border-radius: 8px; padding: 11px 22px;
@@ -285,7 +323,7 @@
     <div class="sidebar-inner">
       <div>
         <button class="my-res-btn" id="my-res-btn">
-          <span>📋 My Reservations</span>
+          <span>&#128203; My Reservations</span>
           <span class="my-res-count" id="my-res-count">0</span>
         </button>
       </div>
@@ -341,7 +379,9 @@
 // ─────────────────────────────────────────────────────────────────
 //  CONFIG
 // ─────────────────────────────────────────────────────────────────
-const API_URL = 'https://script.google.com/a/macros/blair.edu/s/AKfycbwIYIgqaUgB1r5sq29GoOfa_sx3NovYNG35fTiszVzZz8fzhA5uiUtX8Pf5LgB1Jysi/exec';
+const API_URL = 'https://script.google.com/a/macros/blair.edu/s/AKfycbx9vZOx6H_QuFIEbngNfmFWuRcGbtC5IeGmQJ5UasOSsSOIz9j8Atrcifkw8Q4KlF-o/exec';
+
+// ▼▼▼ SET THIS TO YOUR EMAIL so your bookings show as "mine" ▼▼▼
 const CURRENT_USER_EMAIL = 'you@blair.edu';
 
 const ROOMS = [
@@ -363,8 +403,16 @@ const HOUR_NUMS   = [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22];
 const HOUR_LABELS = ['6am','7am','8am','9am','10am','11am','12pm','1pm','2pm',
                      '3pm','4pm','5pm','6pm','7pm','8pm','9pm','10pm'];
 
-function hLabel(h) { return HOUR_LABELS[HOUR_NUMS.indexOf(Math.floor(h))] || (h + ':00'); }
-function hIndex(h) { return HOUR_NUMS.indexOf(Math.floor(h)); }
+// Convert decimal hour (e.g. 9.667) to a display string like "9:40 AM"
+function hLabel(h) {
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  const ampm = hh >= 12 ? 'PM' : 'AM';
+  let dispH = hh % 12;
+  if (dispH === 0) dispH = 12;
+  if (mm === 0) return dispH + ' ' + ampm;
+  return dispH + ':' + String(mm).padStart(2,'0') + ' ' + ampm;
+}
 
 // ─────────────────────────────────────────────────────────────────
 //  STATE
@@ -373,7 +421,7 @@ let currentDate  = new Date(); currentDate.setHours(0,0,0,0);
 let bookings     = {};
 let selectedRoom = null;
 let activeModal  = null;
-const usingSheets = API_URL !== 'https://script.google.com/a/macros/blair.edu/s/AKfycbx9vZOx6H_QuFIEbngNfmFWuRcGbtC5IeGmQJ5UasOSsSOIz9j8Atrcifkw8Q4KlF-o/exec';
+const usingSheets = API_URL !== 'YOUR_DEPLOYMENT_URL_HERE';
 
 const dateKey = d => {
   const y = d.getFullYear();
@@ -382,11 +430,27 @@ const dateKey = d => {
   return `${y}-${m}-${day}`;
 };
 
+// Robust YYYY-MM-DD parser that doesn't get bit by timezones
+function parseDateKey(s) {
+  if (!s) return null;
+  // If it's already a Date, just clone
+  if (s instanceof Date) return new Date(s.getFullYear(), s.getMonth(), s.getDate());
+  s = String(s);
+  // Match YYYY-MM-DD anywhere in the string
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]));
+  // Fallback: try Date constructor
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function fmt(d) {
+  if (!d || isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('en-US',
     { weekday:'long', month:'long', day:'numeric', year:'numeric' });
 }
 function fmtShort(d) {
+  if (!d || isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('en-US',
     { weekday:'short', month:'short', day:'numeric' });
 }
@@ -411,7 +475,7 @@ function hideStatus() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  API (all JSONP because Finalsite -> Apps Script can't do POST)
+//  API
 // ─────────────────────────────────────────────────────────────────
 function jsonp(params) {
   return new Promise((resolve, reject) => {
@@ -436,6 +500,21 @@ function jsonp(params) {
   });
 }
 
+function normalizeDateField(d) {
+  // Whatever the API gives us, normalize to "YYYY-MM-DD"
+  if (!d) return '';
+  if (d instanceof Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + day;
+  }
+  const s = String(d);
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  return s;
+}
+
 async function loadBookings() {
   if (!usingSheets) { render(); return; }
   setStatus('Loading bookings…', 'loading');
@@ -443,17 +522,18 @@ async function loadBookings() {
     const rows = await jsonp({});
     bookings = {};
     (rows || []).forEach(b => {
-      const dk = b.date;
+      const dk = normalizeDateField(b.date);
       if (!bookings[dk]) bookings[dk] = [];
       bookings[dk].push({
         id:      String(b.id),
         roomId:  b.roomId,
+        date:    dk,
         startH:  parseFloat(b.startH),
         endH:    parseFloat(b.endH),
         name:    b.name,
         purpose: b.purpose,
         email:   b.email,
-        mine:    b.email === CURRENT_USER_EMAIL,
+        mine:    String(b.email).toLowerCase() === String(CURRENT_USER_EMAIL).toLowerCase(),
       });
     });
     hideStatus();
@@ -537,10 +617,11 @@ function renderRooms() {
     btn.onclick = () => { selectedRoom = selectedRoom === r.id ? null : r.id; render(); };
     list.appendChild(btn);
   });
+  document.getElementById('my-res-count').textContent = getMyBookings().length;
+}
 
-  // update my-reservations count
-  const count = getMyBookings().length;
-  document.getElementById('my-res-count').textContent = count;
+function escapeHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function renderTimeline() {
@@ -564,6 +645,7 @@ function renderTimeline() {
     grid.appendChild(el);
   });
 
+  // Hour width in % of the grid (relative to the N hour columns, not the label column)
   visible.forEach((room, ri) => {
     const isLast = ri === visible.length - 1;
     const roomB  = dayB.filter(b => b.roomId === room.id);
@@ -577,30 +659,39 @@ function renderTimeline() {
       const isLastCol = hi === N - 1;
       const cell = document.createElement('div');
 
+      // Find booking that this cell overlaps (fractional hours OK)
       const occupying = roomB.find(b => {
-        return hour >= Math.floor(b.startH) && hour < Math.ceil(b.endH);
+        return b.startH < (hour + 1) && b.endH > hour;
       });
-      const isStart = roomB.find(b => Math.floor(b.startH) === hour);
+      // Find booking that STARTS in this column (its bblock anchors here)
+      const startsHere = roomB.find(b => {
+        return b.startH >= hour && b.startH < (hour + 1);
+      });
 
       cell.className = 'tcell'
         + (isLastCol ? ' last-col' : '')
         + (isLast    ? ' last-row' : '')
         + (occupying ? ' occupied' : '');
 
-      if (isStart) {
-        const booking  = isStart;
-        const startHi  = HOUR_NUMS.indexOf(Math.floor(booking.startH));
-        const endHi    = HOUR_NUMS.indexOf(Math.ceil(booking.endH));
-        const span     = (endHi === -1 ? N : endHi) - startHi;
-        const remaining = N - hi;
-        const blockSpan = Math.max(1, Math.min(span, remaining));
-        const bg = booking.mine ? 'var(--teal)' : 'var(--navy)';
-
+      if (startsHere) {
+        const booking = startsHere;
+        // Sub-hour offset within this cell
+        const startOffset = booking.startH - hour;  // 0 to <1
+        const durationHours = booking.endH - booking.startH;
+        // Position the bblock with percentage-of-cell-width offsets
         const block = document.createElement('div');
         block.className = 'bblock';
-        block.style.cssText = `background:${bg};width:calc(${blockSpan * 100}% - 4px);`;
-        block.textContent = booking.name;
-        block.title = `${booking.purpose} (${hLabel(booking.startH)}–${hLabel(booking.endH)})`;
+        const bg = booking.mine ? 'var(--teal)' : 'var(--navy)';
+        block.style.background = bg;
+        block.style.left = `calc(${startOffset * 100}% + 2px)`;
+        block.style.width = `calc(${durationHours * 100}% - 4px)`;
+        const displayLabel = booking.purpose && booking.purpose.trim() ? booking.purpose : booking.name;
+        block.textContent = displayLabel;
+        const tipParts = [];
+        tipParts.push('Booked by: ' + booking.name);
+        if (booking.purpose) tipParts.push('Purpose: ' + booking.purpose);
+        tipParts.push(hLabel(booking.startH) + ' – ' + hLabel(booking.endH));
+        block.title = tipParts.join('\n');
         block.onclick = e => { e.stopPropagation(); showDetail(booking, room); };
         cell.appendChild(block);
       }
@@ -645,7 +736,7 @@ document.getElementById('open-book-btn').onclick = () => {
   const room = selectedRoom ? ROOMS.find(r => r.id === selectedRoom) : ROOMS[0];
   openBookingModal({ room, hour: 9 });
 };
-document.getElementById('my-res-btn').onclick = showMyReservations;
+document.getElementById('my-res-btn').onclick = () => showMyReservations('upcoming');
 
 // ─────────────────────────────────────────────────────────────────
 //  MODAL HELPERS
@@ -665,6 +756,7 @@ function timeInputValue(h) {
 }
 
 function parseTimeInput(str) {
+  if (!str) return 0;
   const [hh, mm] = str.split(':').map(s => parseInt(s, 10));
   return hh + (mm || 0) / 60;
 }
@@ -672,8 +764,6 @@ function parseTimeInput(str) {
 // ─────────────────────────────────────────────────────────────────
 //  BOOKING MODAL  (create OR edit)
 // ─────────────────────────────────────────────────────────────────
-// opts: { room, hour }  for new bookings
-// opts: { editing: booking }  for editing existing booking
 function openBookingModal(opts) {
   closeModal();
   const panel = document.getElementById('booking-panel');
@@ -686,7 +776,7 @@ function openBookingModal(opts) {
   let initRoomId, initDate, initStartH, initEndH, initName, initEmail, initPurpose;
   if (editing) {
     initRoomId  = editing.roomId;
-    initDate    = editing.date;
+    initDate    = normalizeDateField(editing.date);
     initStartH  = editing.startH;
     initEndH    = editing.endH;
     initName    = editing.name;
@@ -703,38 +793,66 @@ function openBookingModal(opts) {
   }
 
   const roomOpts = ROOMS.map(r =>
-    `<option value="${r.id}"${r.id===initRoomId?' selected':''}>${r.name}</option>`).join('');
+    `<option value="${r.id}"${r.id===initRoomId?' selected':''}>${escapeHtml(r.name)}</option>`).join('');
 
   body.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Room</label>
-        <select id="m-room" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;">${roomOpts}</select></div>
-      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Date</label>
-        <input type="date" id="m-date" value="${initDate}" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;"></div>
+    <div class="form-grid-2">
+      <div class="form-field">
+        <label class="form-label" for="m-room">Room</label>
+        <select id="m-room" class="form-select" tabindex="1">${roomOpts}</select>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="m-date">Date</label>
+        <input type="date" id="m-date" class="form-input" tabindex="2" value="${initDate}">
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Start time</label>
-        <input type="time" id="m-start" value="${timeInputValue(initStartH)}" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;font-family:inherit;"></div>
-      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">End time</label>
-        <input type="time" id="m-end" value="${timeInputValue(initEndH)}" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;font-family:inherit;"></div>
+    <div class="form-grid-2">
+      <div class="form-field">
+        <label class="form-label" for="m-start">Start time</label>
+        <input type="time" id="m-start" class="form-input" tabindex="3" value="${timeInputValue(initStartH)}">
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="m-end">End time</label>
+        <input type="time" id="m-end" class="form-input" tabindex="4" value="${timeInputValue(initEndH)}">
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Your name</label>
-        <input type="text" id="m-name" value="${initName.replace(/"/g,'&quot;')}" placeholder="e.g. Kaye Evans" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;"></div>
-      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Your email</label>
-        <input type="email" id="m-email" value="${initEmail.replace(/"/g,'&quot;')}" placeholder="you@blair.edu" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;"></div>
+    <div class="form-grid-2">
+      <div class="form-field">
+        <label class="form-label" for="m-name">Your name</label>
+        <input type="text" id="m-name" class="form-input" tabindex="5" value="${escapeHtml(initName)}" placeholder="e.g. Kaye Evans">
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="m-email">Your email</label>
+        <input type="email" id="m-email" class="form-input" tabindex="6" value="${escapeHtml(initEmail)}" placeholder="you@blair.edu">
+      </div>
     </div>
-    <div style="margin-bottom:14px;"><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Purpose</label>
-      <textarea id="m-purpose" placeholder="Brief description of the event or meeting…" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;height:56px;resize:vertical;font-family:inherit;">${(initPurpose||'').replace(/</g,'&lt;')}</textarea></div>
-    <div style="display:flex;gap:10px;">
-      <button id="mc" style="flex:1;padding:10px;border:1px solid #d8d8d8;border-radius:6px;background:none;font-size:13px;cursor:pointer;color:#666;">Cancel</button>
-      <button id="mok" style="flex:2;padding:10px;background:#00b2ba;color:white;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">${editing ? 'Save changes' : 'Confirm reservation'}</button>
+    <div class="form-field" style="margin-bottom:14px;">
+      <label class="form-label" for="m-purpose">Purpose / Meeting name</label>
+      <textarea id="m-purpose" class="form-textarea" tabindex="7" placeholder="What is this meeting called?">${escapeHtml(initPurpose)}</textarea>
+    </div>
+    <div class="form-actions">
+      <button id="mc" class="btn-cancel-form" tabindex="9" type="button">Cancel</button>
+      <button id="mok" class="btn-submit-form" tabindex="8" type="button">${editing ? 'Save changes' : 'Confirm reservation'}</button>
     </div>`;
 
   panel.showModal();
   activeModal = panel;
-  document.getElementById('m-name').focus();
+
+  // Focus first empty field for natural tab-through
+  const firstEmpty = ['m-name', 'm-email', 'm-purpose'].map(id => document.getElementById(id))
+    .find(el => el && !el.value);
+  if (firstEmpty) firstEmpty.focus();
+  else document.getElementById('m-name').focus();
+
   document.getElementById('mc').onclick = closeModal;
+
+  // Enter key submits from any text field (except textarea, where Enter is a newline)
+  ['m-room','m-date','m-start','m-end','m-name','m-email'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('mok').click(); }
+    });
+  });
 
   document.getElementById('mok').onclick = async () => {
     const name    = document.getElementById('m-name').value.trim();
@@ -749,7 +867,6 @@ function openBookingModal(opts) {
     if (!email) { document.getElementById('m-email').focus(); showToast('Please enter your email', 'error-t'); return; }
     if (endH <= startH) { showToast('End time must be after start time', 'error-t'); return; }
 
-    // Conflict check (ignore self if editing)
     const dayB = bookings[dateVal] || [];
     const conflict = dayB.find(b => {
       if (editing && b.id === editing.id) return false;
@@ -767,9 +884,8 @@ function openBookingModal(opts) {
     try {
       if (editing) await updateBooking(payload);
       else         await saveBooking(payload);
-
       closeModal();
-      await loadBookings();  // reload from sheet so calendar shows the change
+      await loadBookings();
       showToast(editing ? 'Reservation updated!' : 'Reservation confirmed!', 'success');
     } catch(e) {}
   };
@@ -785,22 +901,23 @@ function showDetail(booking, room) {
   const title = document.getElementById('panel-title');
   title.textContent = 'Booking Details';
 
-  const bookingDateObj = new Date(booking.date + 'T00:00:00');
+  const bookingDateObj = parseDateKey(booking.date);
+  const dateLabel = bookingDateObj ? fmt(bookingDateObj) : (booking.date || '—');
 
   body.innerHTML = `
     <div style="background:#f5f5f5;border-radius:8px;padding:14px 16px;margin-bottom:14px;border:1px solid #d8d8d8;">
-      <div style="font-size:15px;font-weight:600;margin-bottom:10px;color:#002244;">${booking.name}</div>
-      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Room</span><strong>${room.name}</strong></div>
-      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Date</span><strong>${fmt(bookingDateObj)}</strong></div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:10px;color:#002244;">${escapeHtml(booking.purpose || booking.name)}</div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Booked by</span><strong>${escapeHtml(booking.name)}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Room</span><strong>${escapeHtml(room.name)}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Date</span><strong>${dateLabel}</strong></div>
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Time</span><strong>${hLabel(booking.startH)} – ${hLabel(booking.endH)}</strong></div>
-      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Purpose</span><strong>${booking.purpose || '—'}</strong></div>
-      <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:#666;">Email</span><strong>${booking.email || '—'}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:#666;">Email</span><strong>${escapeHtml(booking.email || '—')}</strong></div>
       ${booking.mine ? '<div style="margin-top:10px;font-size:12px;font-weight:600;color:#00b2ba;">&#10003; Your booking</div>' : ''}
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
-      ${booking.mine ? '<button id="de" style="padding:9px 18px;background:#f15d22;color:white;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Edit</button>' : ''}
-      ${booking.mine ? '<button id="dd" style="padding:9px 18px;background:none;border:1px solid #da1a32;border-radius:6px;font-size:13px;color:#da1a32;cursor:pointer;">Cancel booking</button>' : ''}
-      <button id="dc" style="padding:9px 18px;background:#002244;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Close</button>
+      ${booking.mine ? '<button id="de" type="button" style="padding:9px 18px;background:#f15d22;color:white;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Edit</button>' : ''}
+      ${booking.mine ? '<button id="dd" type="button" style="padding:9px 18px;background:none;border:1px solid #da1a32;border-radius:6px;font-size:13px;color:#da1a32;cursor:pointer;">Cancel booking</button>' : ''}
+      <button id="dc" type="button" style="padding:9px 18px;background:#002244;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Close</button>
     </div>`;
 
   panel.showModal();
@@ -825,7 +942,8 @@ function showDetail(booking, room) {
 // ─────────────────────────────────────────────────────────────────
 //  MY RESERVATIONS LIST
 // ─────────────────────────────────────────────────────────────────
-function showMyReservations(filter = 'upcoming') {
+function showMyReservations(filter) {
+  filter = filter || 'upcoming';
   closeModal();
   const panel = document.getElementById('booking-panel');
   const body  = document.getElementById('panel-body');
@@ -838,39 +956,47 @@ function showMyReservations(filter = 'upcoming') {
   const past = all.filter(b => b.date < todayKey).reverse();
   const shown = filter === 'upcoming' ? upcoming : past;
 
-  const itemsHtml = shown.length === 0
-    ? `<div class="res-empty">No ${filter} reservations.</div>`
-    : shown.map(b => {
-        const d = new Date(b.date + 'T00:00:00');
-        return `
-          <div class="res-item" data-id="${b.id}">
-            <div class="res-item-title">${roomName(b.roomId)}</div>
-            <div class="res-item-meta">
-              <span>📅 ${fmtShort(d)}</span>
-              <span>🕐 ${hLabel(b.startH)} – ${hLabel(b.endH)}</span>
-            </div>
-            ${b.purpose ? `<div style="font-size:12px;color:#666;margin-top:6px;">${b.purpose.replace(/</g,'&lt;')}</div>` : ''}
-          </div>`;
-      }).join('');
+  let itemsHtml;
+  if (shown.length === 0) {
+    if (all.length === 0) {
+      itemsHtml = `<div class="res-empty">
+        No reservations found.<br><br>
+        <span style="font-size:11px;">Make sure the email at the top of the script (<code>CURRENT_USER_EMAIL</code>) matches the email you use when booking.</span>
+      </div>`;
+    } else {
+      itemsHtml = `<div class="res-empty">No ${filter} reservations.</div>`;
+    }
+  } else {
+    itemsHtml = shown.map(b => {
+      const d = parseDateKey(b.date);
+      return `
+        <div class="res-item" data-id="${escapeHtml(b.id)}">
+          <div class="res-item-title">${escapeHtml(b.purpose || b.name)}</div>
+          <div class="res-item-meta">
+            <span>${escapeHtml(roomName(b.roomId))}</span>
+            <span>&#128197; ${fmtShort(d)}</span>
+            <span>&#128340; ${hLabel(b.startH)} – ${hLabel(b.endH)}</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
 
   body.innerHTML = `
     <div class="res-tabs">
-      <button class="res-tab ${filter==='upcoming'?'active':''}" data-tab="upcoming">Upcoming (${upcoming.length})</button>
-      <button class="res-tab ${filter==='past'?'active':''}" data-tab="past">Past (${past.length})</button>
+      <button class="res-tab ${filter==='upcoming'?'active':''}" data-tab="upcoming" type="button">Upcoming (${upcoming.length})</button>
+      <button class="res-tab ${filter==='past'?'active':''}" data-tab="past" type="button">Past (${past.length})</button>
     </div>
     <div class="res-list">${itemsHtml}</div>
     <div style="display:flex;justify-content:flex-end;margin-top:14px;">
-      <button id="my-close" style="padding:9px 18px;background:#002244;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Close</button>
+      <button id="my-close" type="button" style="padding:9px 18px;background:#002244;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Close</button>
     </div>`;
 
   panel.showModal();
   activeModal = panel;
 
-  // tab switching
   body.querySelectorAll('.res-tab').forEach(t => {
     t.onclick = () => showMyReservations(t.getAttribute('data-tab'));
   });
-  // click an item to open detail
   body.querySelectorAll('.res-item').forEach(el => {
     el.onclick = () => {
       const id = el.getAttribute('data-id');
