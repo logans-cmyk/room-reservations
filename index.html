@@ -119,7 +119,7 @@
   .sidebar-tip { font-size: 11px; color: var(--text-muted); line-height: 1.7; padding: 10px; background: var(--gray-bg); border-radius: 6px; border: 1px solid var(--gray-border); }
 
   /* ── MAIN CONTENT ── */
-  .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
 
   .toolbar {
     background: var(--white);
@@ -325,6 +325,7 @@
   .toast.success { background: var(--teal); }
   .toast.error-t  { background: var(--red-d); }
 </style>
+<style>dialog::backdrop{background:rgba(0,0,0,0.45);} dialog{position:fixed !important;top:60px !important;left:50% !important;transform:translateX(-50%) !important;margin:0 !important;}</style>
 </head>
 <body>
 
@@ -438,6 +439,17 @@
     <div class="timeline-scroll">
       <div id="timeline-container"></div>
     </div>
+
+    <!-- BOOKING DIALOG -->
+    <dialog id="booking-panel" style="border:none;border-radius:10px;padding:0;width:560px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,0.25);position:fixed;top:60px;left:50%;transform:translateX(-50%);margin:0;">
+      <div style="padding:22px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+          <h2 id="panel-title" style="font-size:16px;font-weight:600;color:#002244;margin:0;">New Reservation</h2>
+          <button id="panel-close" style="background:none;border:none;font-size:22px;cursor:pointer;color:#666;line-height:1;padding:0;">&#x2715;</button>
+        </div>
+        <div id="panel-body"></div>
+      </div>
+    </dialog>
   </main>
 </div>
 
@@ -740,14 +752,23 @@ document.getElementById('open-book-btn').onclick = () => {
 // ─────────────────────────────────────────────────────────────────
 //  MODALS
 // ─────────────────────────────────────────────────────────────────
-function closeModal() { if (activeModal) { activeModal.remove(); activeModal = null; } }
+function closeModal() {
+  if (activeModal) {
+    const panel = document.getElementById('booking-panel');
+    if (panel && panel.open) panel.close();
+    activeModal = null;
+  }
+}
 
 function openBookingModal(room, hour) {
   closeModal();
+  const panel = document.getElementById('booking-panel');
+  const body  = document.getElementById('panel-body');
+  const title = document.getElementById('panel-title');
+  title.textContent = 'New Reservation';
+
   const hi = hIndex(hour);
   const defaultEnd = HOUR_NUMS[Math.min(hi + 1, HOUR_NUMS.length - 1)];
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
 
   const roomOpts  = ROOMS.map(r =>
     `<option value="${r.id}"${r.id===room.id?' selected':''}>${r.name}</option>`).join('');
@@ -756,58 +777,75 @@ function openBookingModal(room, hour) {
   const endOpts   = HOUR_NUMS.map((h,i) =>
     `<option value="${h}"${h===defaultEnd?' selected':''}>${HOUR_LABELS[i]}</option>`).join('');
 
-  overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <div class="modal-header">
-      <div class="modal-icon">&#128197;</div>
-      <h2 id="modal-title">New reservation</h2>
+  const emailVal = CURRENT_USER_EMAIL !== 'you@blair.edu' ? CURRENT_USER_EMAIL : '';
+
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Room</label>
+        <select id="m-room" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;">${roomOpts}</select></div>
+      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Date</label>
+        <input type="date" id="m-date" value="${dateKey(currentDate)}" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;"></div>
     </div>
-    <div class="frow"><label>Room</label><select id="m-room">${roomOpts}</select></div>
-    <div class="frow"><label>Date</label><input type="text" value="${fmt(currentDate)}" readonly></div>
-    <div class="two-col">
-      <div class="frow"><label>Start time</label><select id="m-start">${startOpts}</select></div>
-      <div class="frow"><label>End time</label><select id="m-end">${endOpts}</select></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Start time</label>
+        <input type="time" id="m-start" value="${HOUR_LABELS[hi].replace('am','').replace('pm','') === '12' ? '12' : (hour < 12 ? String(hour).padStart(2,'0') : String(hour === 12 ? 12 : hour-12+12).padStart(2,'0'))}:00" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;font-family:inherit;"></div>
+      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">End time</label>
+        <input type="time" id="m-end" value="${String(defaultEnd).padStart(2,'0') === '00' ? '22' : String(defaultEnd < 10 ? '0'+defaultEnd : defaultEnd)}:00" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;font-family:inherit;"></div>
     </div>
-    <div class="frow"><label>Your name</label><input type="text" id="m-name" placeholder="e.g. Kaye Evans" autocomplete="name"></div>
-    <div class="frow"><label>Your email</label><input type="email" id="m-email" value="${CURRENT_USER_EMAIL !== 'you@blair.edu' ? CURRENT_USER_EMAIL : ''}" placeholder="you@blair.edu"></div>
-    <div class="frow"><label>Purpose</label><textarea id="m-purpose" placeholder="Brief description of the event or meeting…"></textarea></div>
-    <div class="modal-actions">
-      <button class="btn-cancel" id="mc">Cancel</button>
-      <button class="btn-confirm" id="mok">Confirm reservation</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Your name</label>
+        <input type="text" id="m-name" placeholder="e.g. Kaye Evans" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;"></div>
+      <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Your email</label>
+        <input type="email" id="m-email" value="${emailVal}" placeholder="you@blair.edu" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;"></div>
     </div>
-  </div>`;
+    <div style="margin-bottom:14px;"><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:4px;">Purpose</label>
+      <textarea id="m-purpose" placeholder="Brief description of the event or meeting…" style="width:100%;padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font-size:13px;height:56px;resize:vertical;font-family:inherit;"></textarea></div>
+    <div style="display:flex;gap:10px;">
+      <button id="mc" style="flex:1;padding:10px;border:1px solid #d8d8d8;border-radius:6px;background:none;font-size:13px;cursor:pointer;color:#666;">Cancel</button>
+      <button id="mok" style="flex:2;padding:10px;background:#00b2ba;color:white;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Confirm reservation</button>
+    </div>`;
 
-  document.querySelector('.app').appendChild(overlay);
-  activeModal = overlay;
-  overlay.querySelector('#m-name').focus();
-  overlay.querySelector('#mc').onclick = closeModal;
-  overlay.onclick = e => { if (e.target === overlay) closeModal(); };
+  panel.showModal();
+  activeModal = panel;
+  document.getElementById('m-name').focus();
+  document.getElementById('mc').onclick = closeModal;
 
-  overlay.querySelector('#mok').onclick = async () => {
-    const name    = overlay.querySelector('#m-name').value.trim();
-    const email   = overlay.querySelector('#m-email').value.trim();
-    const purpose = overlay.querySelector('#m-purpose').value.trim();
-    const roomId  = overlay.querySelector('#m-room').value;
-    const startH  = parseInt(overlay.querySelector('#m-start').value);
-    const endH    = parseInt(overlay.querySelector('#m-end').value);
+  document.getElementById('mok').onclick = async () => {
+    const name    = document.getElementById('m-name').value.trim();
+    const email   = document.getElementById('m-email').value.trim();
+    const purpose = document.getElementById('m-purpose').value.trim();
+    const roomId  = document.getElementById('m-room').value;
+    const startRaw = document.getElementById('m-start').value; // "HH:MM"
+    const endRaw   = document.getElementById('m-end').value;
+    const startH   = parseFloat(startRaw.replace(':','.').split('.')[0]) + (parseInt(startRaw.split(':')[1]||0)/60);
+    const endH     = parseFloat(endRaw.replace(':','.').split('.')[0]) + (parseInt(endRaw.split(':')[1]||0)/60);
+    const startHDisplay = startRaw;
+    const endHDisplay   = endRaw;
+    const dateVal = document.getElementById('m-date').value;
 
-    if (!name)  { overlay.querySelector('#m-name').focus();  showToast('Please enter your name', 'error-t'); return; }
-    if (!email) { overlay.querySelector('#m-email').focus(); showToast('Please enter your email', 'error-t'); return; }
+    if (!name)  { document.getElementById('m-name').focus();  showToast('Please enter your name', 'error-t'); return; }
+    if (!email) { document.getElementById('m-email').focus(); showToast('Please enter your email', 'error-t'); return; }
 
-    const si = hIndex(startH), ei = hIndex(endH);
-    if (ei <= si) { showToast('End time must be after start time', 'error-t'); return; }
+    if (endH <= startH) { showToast('End time must be after start time', 'error-t'); return; }
 
-    const dk   = dateKey(currentDate);
+    const parts = dateVal.split('-');
+    const bookingDate = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+    bookingDate.setHours(0,0,0,0);
+    const dk = dateKey(bookingDate);
+
     const dayB = bookings[dk] || [];
     const conflict = dayB.find(b => {
       if (b.roomId !== roomId) return false;
-      const bsi = hIndex(b.startH), bei = hIndex(b.endH);
-      return !(ei <= bsi || si >= bei);
+      const bsi = b.startH, bei = b.endH;
+      return !(endH <= bsi || startH >= bei);
     });
     if (conflict) { showToast('That slot conflicts with an existing booking', 'error-t'); return; }
 
     const newBooking = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-      roomId, date: dk, startH, endH, name, purpose, email,
+      roomId, date: dk, startH, endH,
+      startDisplay: startHDisplay, endDisplay: endHDisplay,
+      name, purpose, email,
       mine: email === CURRENT_USER_EMAIL,
     };
 
@@ -817,50 +855,47 @@ function openBookingModal(room, hour) {
       bookings[dk].push(newBooking);
       closeModal(); render();
       showToast('Reservation confirmed!', 'success');
-    } catch(e) { /* error already shown in status bar */ }
+    } catch(e) {}
   };
 }
 
 function showDetail(booking, room) {
   closeModal();
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="detail-title">
-    <div class="modal-header">
-      <div class="modal-icon">&#128203;</div>
-      <h2 id="detail-title">Booking details</h2>
-    </div>
-    <div class="detail-box">
-      <h3>${booking.name}</h3>
-      <div class="drow"><span>Room</span><strong>${room.name}</strong></div>
-      <div class="drow"><span>Date</span><strong>${fmt(currentDate)}</strong></div>
-      <div class="drow"><span>Time</span><strong>${hLabel(booking.startH)} – ${hLabel(booking.endH)}</strong></div>
-      <div class="drow"><span>Purpose</span><strong>${booking.purpose}</strong></div>
-      <div class="drow"><span>Email</span><strong>${booking.email || '—'}</strong></div>
-      ${booking.mine ? '<div class="mine-badge">&#10003; Your booking</div>' : ''}
-    </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;">
-      ${booking.mine
-        ? `<button class="btn-confirm danger" id="dd" style="flex:0;padding:9px 18px;">Cancel booking</button>`
-        : ''}
-      <button class="btn-cancel" id="dc" style="flex:0;padding:9px 18px;">Close</button>
-    </div>
-  </div>`;
+  const panel = document.getElementById('booking-panel');
+  const body  = document.getElementById('panel-body');
+  const title = document.getElementById('panel-title');
+  title.textContent = 'Booking Details';
 
-  document.querySelector('.app').appendChild(overlay);
-  activeModal = overlay;
-  overlay.querySelector('#dc').onclick = closeModal;
-  overlay.onclick = e => { if (e.target === overlay) closeModal(); };
+  const bookingDateObj = new Date(booking.date + 'T00:00:00');
 
-  const del = overlay.querySelector('#dd');
+  body.innerHTML = `
+    <div style="background:#f5f5f5;border-radius:8px;padding:14px 16px;margin-bottom:14px;border:1px solid #d8d8d8;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:10px;color:#002244;">${booking.name}</div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Room</span><strong>${room.name}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Date</span><strong>${fmt(bookingDateObj)}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Time</span><strong>${booking.startDisplay || hLabel(booking.startH)} – ${booking.endDisplay || hLabel(booking.endH)}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#666;">Purpose</span><strong>${booking.purpose || '—'}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:#666;">Email</span><strong>${booking.email || '—'}</strong></div>
+      ${booking.mine ? '<div style="margin-top:10px;font-size:12px;font-weight:600;color:#00b2ba;">&#10003; Your booking</div>' : ''}
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      ${booking.mine ? '<button id="dd" style="padding:9px 18px;background:none;border:1px solid #da1a32;border-radius:6px;font-size:13px;color:#da1a32;cursor:pointer;">Cancel booking</button>' : ''}
+      <button id="dc" style="padding:9px 18px;background:#002244;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Close</button>
+    </div>`;
+
+  panel.showModal();
+  activeModal = panel;
+  document.getElementById('dc').onclick = closeModal;
+
+  const del = document.getElementById('dd');
   if (del) del.onclick = async () => {
     try {
       await deleteBooking(booking.id);
-      const dk = dateKey(currentDate);
+      const dk = booking.date;
       bookings[dk] = (bookings[dk] || []).filter(b => b.id !== booking.id);
       closeModal(); render();
       showToast('Booking cancelled', 'success');
-    } catch(e) { /* error already shown in status bar */ }
+    } catch(e) {}
   };
 }
 
@@ -890,6 +925,7 @@ document.addEventListener('keydown', e => {
 // ─────────────────────────────────────────────────────────────────
 //  INIT
 // ─────────────────────────────────────────────────────────────────
+document.getElementById('panel-close').onclick = closeModal;
 seedDemoData();
 loadBookings();
 </script>
