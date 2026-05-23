@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Blair Academy — Room Reservations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   /* ── PASTE YOUR APPS SCRIPT DEPLOYMENT URL ON LINE 1 OF THE <script> BLOCK BELOW ── */
 
@@ -29,8 +31,9 @@
     --white:  #ffffff;
   }
 
+  html, body { height: 100%; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
     font-size: 14px;
     color: var(--text);
     background: var(--gray-bg);
@@ -135,7 +138,7 @@
     transition: background 0.1s; flex-shrink: 0;
   }
   .date-nav-btn:hover { background: var(--gray-bg); }
-  .date-display { font-size: 15px; font-weight: 600; color: var(--text); flex: 1; }
+  .date-display { font-size: 15px; font-weight: 600; color: var(--text); flex: 1; min-width: 140px; }
   .today-btn {
     background: none; border: 1px solid var(--gray-border);
     border-radius: 6px; padding: 10px 16px; font-size: 13px;
@@ -240,11 +243,12 @@
 
   /* ── MODAL ── */
   .modal-overlay {
-    position: fixed; inset: 0;
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0,0,0,0.45);
-    display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: flex-start; justify-content: center;
     z-index: 200;
-    padding: 16px;
+    padding: 60px 16px 16px;
+    min-height: 100%;
   }
   .modal {
     background: var(--white);
@@ -307,7 +311,7 @@
 
   /* ── TOAST ── */
   .toast {
-    position: fixed; bottom: 24px; left: 50%;
+    position: absolute; bottom: 24px; left: 50%;
     transform: translateX(-50%) translateY(10px);
     background: var(--navy); color: white;
     border-radius: 8px; padding: 11px 22px;
@@ -396,7 +400,7 @@
   <span class="header-est">Est. 1848</span>
 </header>
 
-<div class="app">
+<div class="app" style="position:relative;">
   <!-- SIDEBAR -->
   <nav class="sidebar" aria-label="Room list">
     <div class="sidebar-inner">
@@ -421,7 +425,7 @@
     <div class="toolbar">
       <button class="date-nav-btn" id="prev-day" aria-label="Previous day">&#8592;</button>
       <button class="date-nav-btn" id="next-day" aria-label="Next day">&#8594;</button>
-      <div class="date-display" id="date-display"></div>
+      <input type="date" id="date-display" style="font-size:15px;font-weight:600;color:var(--text);border:1px solid var(--gray-border);border-radius:6px;padding:6px 10px;background:var(--white);cursor:pointer;flex:1;font-family:'Source Sans 3',sans-serif;">
       <button class="today-btn" id="today-btn">Today</button>
       <button class="new-btn" id="open-book-btn">&#43; New booking</button>
     </div>
@@ -461,14 +465,14 @@ const ROOMS = [
   { id: 'cec103',    name: 'CEC 103'  },
   { id: 'cec104',    name: 'CEC 104'  },
   { id: 'cec3',      name: 'CEC Third Floor'  },
-  { id: 'chwb3',     name: 'CHWB 3rd Floor Conf. Room'  },
+  { id: 'chwb3',     name: 'CHWB 3rd Floor'  },
   { id: 'cowan',     name: 'Cowan Auditorium' },
   { id: 'dance',     name: 'Dance Studio'  },
   { id: 'locke',     name: 'Locke Hall Conference Room'  },
   { id: 'low',       name: 'Low Conference Room'  },
   { id: 'timken111', name: 'Timken 111'  },
   { id: 'timken112', name: 'Timken 112'  },
-  { id: 'tracy',     name: 'Tracy Hall Conference Room'  },
+  { id: 'tracy',     name: 'Tracy Hall'  },
 ];
 
 // ─────────────────────────────────────────────────────────────────
@@ -701,7 +705,8 @@ function renderTimeline() {
 }
 
 function render() {
-  document.getElementById('date-display').textContent = fmt(currentDate);
+  const dd = document.getElementById('date-display');
+  dd.value = dateKey(currentDate);
   renderRooms();
   renderTimeline();
 }
@@ -719,6 +724,12 @@ document.getElementById('next-day').onclick = () => {
 };
 document.getElementById('today-btn').onclick = () => {
   currentDate = new Date(); currentDate.setHours(0,0,0,0);
+  if (usingSheets) loadBookings(); else render();
+};
+document.getElementById('date-display').onchange = (e) => {
+  const parts = e.target.value.split('-');
+  currentDate = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  currentDate.setHours(0,0,0,0);
   if (usingSheets) loadBookings(); else render();
 };
 document.getElementById('open-book-btn').onclick = () => {
@@ -765,7 +776,7 @@ function openBookingModal(room, hour) {
     </div>
   </div>`;
 
-  document.body.appendChild(overlay);
+  document.querySelector('.app').appendChild(overlay);
   activeModal = overlay;
   overlay.querySelector('#m-name').focus();
   overlay.querySelector('#mc').onclick = closeModal;
@@ -836,7 +847,7 @@ function showDetail(booking, room) {
     </div>
   </div>`;
 
-  document.body.appendChild(overlay);
+  document.querySelector('.app').appendChild(overlay);
   activeModal = overlay;
   overlay.querySelector('#dc').onclick = closeModal;
   overlay.onclick = e => { if (e.target === overlay) closeModal(); };
